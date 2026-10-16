@@ -1,5 +1,7 @@
+# Data files
+data/ 
+
 # Byte-compiled / optimized / DLL files
-data/ # Data files
 __pycache__/
 *.py[codz]
 *$py.class
