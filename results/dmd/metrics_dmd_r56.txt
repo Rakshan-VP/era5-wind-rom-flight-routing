@@ -1,0 +1,11 @@
+POD-DMD  r=56 (95% energy)
+free-run eps_u        : 0.5942
+free-run eps_v        : 0.7210
+24 h lead eps_u / v   : 0.4962 / 0.8363
+72 h lead eps_u / v   : 0.6101 / 0.9171
+projection floor u / v: 0.1899 / 0.2572
+spectral radius       : 0.99702
+fit time [s]          : 0.0119
+predict time [s]      : 0.0704
+parameters            : 3136
+storage [MiB]         : 7.71

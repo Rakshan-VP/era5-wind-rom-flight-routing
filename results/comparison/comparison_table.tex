@@ -1,0 +1,79 @@
+% OpInf model/gamma: r=21: linear, 10; r=56: linear, 10; r=269: linear, 10
+% Delta = 100(OpInf-DMD)/DMD, negative = OpInf lower
+\begin{table}[t]
+\centering
+\small
+\caption{Forecast accuracy of POD-DMD and POD-OpInf on the 2026 test month (same $r$, same basis).}
+\label{tab:rom_acc}
+\begin{tabular}{rlrrr}
+\toprule
+$r$ & Metric & DMD & OpInf & $\Delta$ [\%] \\
+\midrule
+21 & $\varepsilon_u$ free-run & 0.6036 & 0.6173 & +2.3 \\
+ & $\varepsilon_v$ free-run & 0.7221 & 0.7215 & -0.1 \\
+ & $\varepsilon_u$ 24 h & 0.4702 & 0.4604 & -2.1 \\
+ & $\varepsilon_v$ 24 h & 0.8052 & 0.7792 & -3.2 \\
+ & $\varepsilon_u$ 72 h & 0.6516 & 0.6125 & -6.0 \\
+ & $\varepsilon_v$ 72 h & 0.9729 & 0.8928 & -8.2 \\
+ & $\bar\varepsilon_{u,v}$ free-run & 0.6629 & 0.6694 & +1.0 \\
+ & $\bar\varepsilon_{u,v}$ 24 h & 0.6377 & 0.6198 & -2.8 \\
+ & $\bar\varepsilon_{u,v}$ 72 h & 0.8122 & 0.7526 & -7.3 \\
+ & 24 h excess over floor [\%] & 107.4 & 101.6 & -5.4 \\
+ & 72 h excess over floor [\%] & 164.2 & 144.8 & -11.8 \\
+\midrule
+56 & $\varepsilon_u$ free-run & 0.5942 & 0.6098 & +2.6 \\
+ & $\varepsilon_v$ free-run & 0.7210 & 0.7152 & -0.8 \\
+ & $\varepsilon_u$ 24 h & 0.4962 & 0.4845 & -2.4 \\
+ & $\varepsilon_v$ 24 h & 0.8363 & 0.8082 & -3.4 \\
+ & $\varepsilon_u$ 72 h & 0.6101 & 0.5879 & -3.6 \\
+ & $\varepsilon_v$ 72 h & 0.9171 & 0.8509 & -7.2 \\
+ & $\bar\varepsilon_{u,v}$ free-run & 0.6576 & 0.6625 & +0.7 \\
+ & $\bar\varepsilon_{u,v}$ 24 h & 0.6662 & 0.6464 & -3.0 \\
+ & $\bar\varepsilon_{u,v}$ 72 h & 0.7636 & 0.7194 & -5.8 \\
+ & 24 h excess over floor [\%] & 198.0 & 189.1 & -4.5 \\
+ & 72 h excess over floor [\%] & 241.5 & 221.8 & -8.2 \\
+\midrule
+269 & $\varepsilon_u$ free-run & 0.6283 & 0.6270 & -0.2 \\
+ & $\varepsilon_v$ free-run & 0.7444 & 0.7227 & -2.9 \\
+ & $\varepsilon_u$ 24 h & 0.5018 & 0.4893 & -2.5 \\
+ & $\varepsilon_v$ 24 h & 0.8209 & 0.7944 & -3.2 \\
+ & $\varepsilon_u$ 72 h & 0.5770 & 0.5653 & -2.0 \\
+ & $\varepsilon_v$ 72 h & 0.8286 & 0.7881 & -4.9 \\
+ & $\bar\varepsilon_{u,v}$ free-run & 0.6864 & 0.6749 & -1.7 \\
+ & $\bar\varepsilon_{u,v}$ 24 h & 0.6613 & 0.6418 & -3.0 \\
+ & $\bar\varepsilon_{u,v}$ 72 h & 0.7028 & 0.6767 & -3.7 \\
+ & 24 h excess over floor [\%] & 391.6 & 377.1 & -3.7 \\
+ & 72 h excess over floor [\%] & 422.5 & 403.0 & -4.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Cost and stability of POD-DMD and POD-OpInf.}
+\label{tab:rom_cost}
+\begin{tabular}{rlrrr}
+\toprule
+$r$ & Metric & DMD & OpInf & $\Delta$ [\%] \\
+\midrule
+21 & $\rho(A)$ & 0.9978 & 0.9944 & -0.3 \\
+ & Fit time [s] & 0.0056 & 0.0014 & -74.3 \\
+ & Predict time [s] & 0.0766 & 0.0773 & +1.0 \\
+ & Parameters & 441 & 462 & +4.8 \\
+ & Storage [MiB] & 2.97 & 2.97 & +0.0 \\
+\midrule
+56 & $\rho(A)$ & 0.9970 & 0.9937 & -0.3 \\
+ & Fit time [s] & 0.0119 & 0.0037 & -68.7 \\
+ & Predict time [s] & 0.0704 & 0.0834 & +18.5 \\
+ & Parameters & 3136 & 3192 & +1.8 \\
+ & Storage [MiB] & 7.71 & 7.71 & +0.0 \\
+\midrule
+269 & $\rho(A)$ & 0.9965 & 0.9931 & -0.3 \\
+ & Fit time [s] & 0.1262 & 0.0139 & -89.0 \\
+ & Predict time [s] & 0.1215 & 0.1133 & -6.7 \\
+ & Parameters & 72361 & 72630 & +0.4 \\
+ & Storage [MiB] & 36.94 & 36.94 & +0.0 \\
+\bottomrule
+\end{tabular}
+\end{table}

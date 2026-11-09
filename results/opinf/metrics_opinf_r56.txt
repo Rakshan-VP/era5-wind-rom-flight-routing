@@ -1,0 +1,13 @@
+POD-OpInf  r=56 (95% energy)
+model / gamma         : linear / 10
+free-run eps_u        : 0.6098
+free-run eps_v        : 0.7152
+24 h lead eps_u / v   : 0.4845 / 0.8082
+72 h lead eps_u / v   : 0.5879 / 0.8509
+projection floor u / v: 0.1899 / 0.2572
+spectral radius       : 0.99367
+fit time [s]          : 0.0037
+predict time [s]      : 0.0834
+parameters            : 3192
+storage [MiB]         : 7.71
+blow-up hour (-1=none): -1

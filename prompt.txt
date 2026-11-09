@@ -1,0 +1,70 @@
+PROJECT
+AS5401 project: reduced-order modeling of ERA5 250 hPa winds (u, v) for Chennai -> Singapore
+flight routing. Proposal PDF attached. Pipeline: POD -> {DMD, OpInf} -> wind field -> route
+optimizer (time-dependent Dijkstra) -> metrics. Same r, same split, same metrics for DMD and OpInf.
+
+DATA AND SPLIT
+- data/jan2022_2026.nc: every January 2022-2026, hourly, 0-18N, 78-108E, 0.25 deg (73 x 121). Variables u, v.
+- Train = Jan 2022-25 (4 x 744 snapshots). Test = Jan 2026. No validation year in POD/DMD.
+  OpInf uses 2025 as a validation year only to pick gamma and linear vs quadratic.
+- X in R^{n x m}, n = 2*Ng = 17666, rows = [u_1..u_Ng ; v_1..v_Ng], columns = time.
+- Saved in data/snapshot_matrix.npz (X, Xtr, Xte, t, years, lat, lon).
+- Training pairs (a_k, a_{k+1}) are built inside each January only, never across a year boundary.
+
+CODE CONVENTIONS (always follow)
+- Every script starts with:
+    SRC = Path(__file__).resolve().parent.parent; sys.path.append(str(SRC))
+    from style import W1, W2, C, save
+  (IEEE style: W1 = 3.5 in, W2 = 7.16 in, Okabe-Ito colours C, save(fig, out, name) writes PDF + PNG.)
+- Outputs go to results/<step>/ (datarepresentation, pod, dmd, opinf). Arrays go to data/.
+- Everything single-column (W1) except the singular-value plot and videos. Keep code short and copy-pasteable.
+  Give only the changed block when editing an existing script.
+- Each method also writes individual txt files (metrics_<method>_r{r}.txt) plus summary_<method>.txt.
+- r values come from 90/95/99 % cumulative energy of the training POD: R = searchsorted(E, [.9,.95,.99]) + 1.
+  Plots are labelled "90% (r=...)" etc.
+
+DONE
+1. data_representation.py: loads u, v, prints size, makes a 5-panel video (one panel per January).
+2. build_matrix.py: builds X, splits, saves data/snapshot_matrix.npz and a figure of X.
+3. pod.py: POD on training data (mean + SVD) -> data/pod.npz (U, S, xbar). Plots: singular values
+   (log-log + residual energy), reconstruction error vs r (train/test), first 6 modes (3x2, W1),
+   first 4 test coefficients (W1), and a 2x4 video (ERA5, training mean, 90/95/99 % reconstructions,
+   bottom row = |speed error|).
+4. pod_dmd.py: A = A2 * pinv(A1) per energy level. Metrics: free-run eps_u, eps_v (mean over test
+   month), 24 h and 72 h lead errors (restart from ERA5 every 24 h, run 72 h, H=72, STRIDE=24),
+   projection floor, spectral radius, fit/predict time, parameters, storage MiB.
+   Plots: dmd_error (lead-time error + free-run 24 h running mean, W2, can be restacked to W1) and
+   dmd_eigs (single column, all 3 energies overlaid, axes limits from data, max |lambda| starred).
+   Saves data/dmd_r{r}.npz (A, a_free, lam).
+5. pod_opinf.py: z_{k+1} = c + A z + H q(z), coefficients scaled by training std, ridge (dual form
+   when features > samples), gamma grid 1e-1..1e5 chosen on 2025, linear vs quadratic chosen on
+   validation, refit on 2022-25. Diverged states are set to NaN and reported as blow-up hour.
+   Same metric keys as DMD plus model, gamma, blow. Plots: opinf_error (stacked, W1), opinf_validation.
+   Saves data/opinf_r{r}.npz (W, s, quad, a_free).
+
+KNOWN NOTES
+- DMD free-run decays to the training mean if rho < 1, so the 24 h / 72 h lead errors are the fairer numbers.
+- Quadratic OpInf can blow up. Large r can skip the quadratic variant (memory guard).
+- The POD basis uses all 4 training years, including the OpInf validation year (slight leakage, mention in paper).
+
+REMAINING
+A) compare.py: overlay DMD and OpInf on the same axes (lead-time error, free-run error), W1 figures,
+   and merge both summary tables into one txt and one LaTeX-ready table. Show whether lower eps_u,v
+   gives a better route.
+B) Routing (Part 2), using Chennai (13.00N, 80.18E) -> Singapore Changi (1.36N, 103.99E):
+   - Grid graph on the 73 x 121 ERA5 grid (8 or 16 neighbours), edge length d (great-circle),
+     unit direction e, unit normal n.
+   - Ground speed Vg = w.e + sqrt(Va^2 - (w.n)^2), segment time = d / Vg, wind w = (u, v) interpolated
+     at the edge midpoint, evaluated at the arrival time (time-dependent Dijkstra).
+   - Case A: constant true airspeed Va (e.g. 250 m/s), fuel F = mdot * T, so min fuel = min time.
+   - Case B: variable Va in [Vmin, Vmax], mdot(Va) = c0 + c3 Va^3, edge cost
+     min over Va of (mdot(Va) + ct) * d / Vg(Va), with normalised coefficients.
+   - Run the same solver, departure times, constraints and parameters on three wind sources:
+     ERA5 truth, POD-DMD, POD-OpInf (same r, taken from data/dmd_r{r}.npz and data/opinf_r{r}.npz,
+     reconstructed as xbar + Ur a). Use windowed forecasts (restart from ERA5 at departure)
+     rather than the 31-day free-run, and several departure times in Jan 2026.
+   - Metrics: route deviation delta_route (mean great-circle distance at equal-arclength samples),
+     flight-time error eps_T = |T_ROM - T_ref| / T_ref and fuel error eps_F, both evaluated on TRUE
+     ERA5 winds along the ROM route, plus computation cost.
+   - Plots (W1): route map on the wind field for the 3 sources, and eps_T / eps_F / delta_route vs r.
+   - Output to results/routing/, individual txt per case plus a summary table.

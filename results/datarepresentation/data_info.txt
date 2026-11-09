@@ -1,0 +1,10 @@
+File          : jan2022_2026.nc
+Variables     : u, v
+Grid          : 73 x 121 (lat x lon), Ng = 8833
+State dim n   : 17666
+Snapshots m   : 3720  (2022-01-01T00:00:00.000000000 -> 2026-01-31T23:00:00.000000000)
+X shape       : (17666, 3720), float32, 250.7 MiB
+Train years   : [np.int64(2022), np.int64(2023), np.int64(2024), np.int64(2025)] -> 2976 snapshots
+Test year     : 2026 -> 744 snapshots
+Lat range     : 0.0-18.0
+Lon range     : 78.0-108.0

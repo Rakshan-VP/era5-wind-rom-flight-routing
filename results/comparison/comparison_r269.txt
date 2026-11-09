@@ -1,0 +1,18 @@
+r=269 (99% energy) | projection floor 0.1345 | OpInf: linear, gamma=10, blow-up h=-1
+metric                          DMD      OpInf  change[%]
+free-run eps_u               0.6283     0.6270       -0.2
+free-run eps_v               0.7444     0.7227       -2.9
+24 h eps_u                   0.5018     0.4893       -2.5
+24 h eps_v                   0.8209     0.7944       -3.2
+72 h eps_u                   0.5770     0.5653       -2.0
+72 h eps_v                   0.8286     0.7881       -4.9
+free-run mean eps_uv         0.6864     0.6749       -1.7
+24 h mean eps_uv             0.6613     0.6418       -3.0
+72 h mean eps_uv             0.7028     0.6767       -3.7
+24 h excess/floor [%]         391.6      377.1       -3.7
+72 h excess/floor [%]         422.5      403.0       -4.6
+spectral radius              0.9965     0.9931       -0.3
+fit time [s]                 0.1262     0.0139      -89.0
+predict time [s]             0.1215     0.1133       -6.7
+parameters                    72361      72630       +0.4
+storage [MiB]                 36.94      36.94       +0.0

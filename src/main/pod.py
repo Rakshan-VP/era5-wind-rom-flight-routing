@@ -1,105 +1,117 @@
-# src/main/pod.py -- Phase 1: POD basis from TRAINING data only
-# Figures -> results/pod/*.pdf + *.png | Basis -> data/pod_basis.npz
 import sys
+import numpy as np, matplotlib.pyplot as plt
 from pathlib import Path
-import numpy as np
-import matplotlib.pyplot as plt
-
-SRC  = Path(__file__).resolve().parent.parent      
-ROOT = SRC.parent                                  
+from matplotlib.animation import FuncAnimation, FFMpegWriter, PillowWriter
+SRC  = Path(__file__).resolve().parent.parent
+ROOT = SRC.parent
 sys.path.append(str(SRC))
-from style import W1, W2, C, save                  
+from style import W1, W2, C, save
 
-DATA = ROOT / "data"
-OUT  = ROOT / "results" / "pod"
-OUT.mkdir(parents=True, exist_ok=True); DATA.mkdir(exist_ok=True)
-N_TR, N_VAL, R_MAX = 984, 216, 200
+OUT = Path("results/pod"); OUT.mkdir(parents=True, exist_ok=True)
 
-# load + chronological split
-d = np.load(DATA / "X_snapshots.npz")
-X, lat, lon = d["X"].astype(np.float64), d["lat"], d["lon"]
-nlat, nlon = len(lat), len(lon); Ng = nlat * nlon
-assert X.shape[0] == 2 * Ng
-splits = {"train": X[:, :N_TR], "val": X[:, N_TR:N_TR + N_VAL], "test": X[:, N_TR + N_VAL:]}
+# ---- load + split (train = 2022-25, test = 2026) ----
+d = np.load("data/snapshot_matrix.npz")
+Xtr, Xte, lat, lon = d["Xtr"].astype(np.float64), d["Xte"].astype(np.float64), d["lat"], d["lon"]
+n = Xtr.shape[0]; Ng = n // 2; Nphi, Nlam = len(lat), len(lon)
+org = "lower" if lat[0] < lat[-1] else "upper"
+ext = [lon.min(), lon.max(), lat.min(), lat.max()]
 
-# POD (mean + SVD from train only) 
-x_mean = splits["train"].mean(axis=1, keepdims=True)
-Uf, S, _ = np.linalg.svd(splits["train"] - x_mean, full_matrices=False)
-energy = np.cumsum(S**2) / np.sum(S**2)
-r_cand = {p: int(np.searchsorted(energy, p) + 1) for p in (0.90, 0.95, 0.99)}
+# ---- POD on training data only ----
+xbar = Xtr.mean(axis=1, keepdims=True)
+U, S, _ = np.linalg.svd(Xtr - xbar, full_matrices=False)
+np.savez("data/pod.npz", U=U, S=S, xbar=xbar)
+E = np.cumsum(S**2) / np.sum(S**2)
+for p in (0.90, 0.95, 0.99):
+    print(f"r for {p:.0%} energy: {np.searchsorted(E, p) + 1}")
 
-# projection error vs r 
-def proj_err(Xs, r):
-    Ur = Uf[:, :r]
-    Xr = x_mean + Ur @ (Ur.T @ (Xs - x_mean))
-    rel = lambda s: (np.linalg.norm(Xr[s] - Xs[s], axis=0) / np.linalg.norm(Xs[s], axis=0)).mean()
-    return rel(slice(0, Ng)), rel(slice(Ng, None))      # eps_u, eps_v
+# ---- reconstruction error vs r (train and test) ----
+rs = np.unique(np.r_[1:10, 10:101:5, 150, 200, 300]); rs = rs[rs <= len(S)]
+def err(X, r):
+    Xc = X - xbar; Ur = U[:, :r]
+    return np.mean(np.linalg.norm(Xc - Ur @ (Ur.T @ Xc), axis=0) / np.linalg.norm(X, axis=0))
+etr = [err(Xtr, r) for r in rs]; ete = [err(Xte, r) for r in rs]
 
-r_list = np.unique(np.r_[np.arange(1, 21), np.arange(25, R_MAX + 1, 5), list(r_cand.values())])
-err = {k: np.array([proj_err(Xs, r) for r in r_list]) for k, Xs in splits.items()}
+# ---- plot 1: singular values + residual energy (zoomed) ----
+k = np.arange(1, len(S) + 1)
+fig, ax = plt.subplots(1, 2, figsize=(W2, 2.1))
+ax[0].loglog(k, S / S[0], c=C["blue"])
+ax[0].set(xlabel="Mode $i$", ylabel="$\\sigma_i/\\sigma_1$")
+ax[1].semilogy(k[:400], 1 - E[:400], c=C["orange"])
+for p, ls in zip((0.90, 0.95, 0.99), (":", "--", "-.")):
+    r_p = np.searchsorted(E, p) + 1
+    ax[1].axhline(1 - p, c="k", ls=ls, lw=0.5)
+    ax[1].plot(r_p, 1 - p, "ko", ms=3)
+    ax[1].annotate(f"{p:.0%}: $r$={r_p}", (r_p, 1 - p), xytext=(4, 3),
+                   textcoords="offset points", fontsize=6)
+ax[1].set(xlabel="$r$", ylabel="Residual energy $1-E(r)$")
+save(fig, OUT, "singular_values")
 
-# save numbers 
-np.savetxt(OUT / "projection_error.csv", np.column_stack([r_list] + [err[k] for k in splits]),
-           delimiter=",", fmt="%.6g", comments="",
-           header="r," + ",".join(f"{k}_eps_u,{k}_eps_v" for k in splits))
+# ---- plot 2: reconstruction error vs r ----
+fig, ax = plt.subplots(figsize=(W1, 2.2))
+ax.semilogy(rs, etr, "o-", c=C["blue"], label="Train (2022-25)")
+ax.semilogy(rs, ete, "s-", c=C["orange"], label="Test (2026)")
+ax.set(xlabel="$r$", ylabel="Mean relative error"); ax.legend()
+save(fig, OUT, "recon_error_vs_r")
 
-A_all = Uf[:, :R_MAX].T @ (X - x_mean)                   # (R_MAX, 1416)
-np.savez(DATA / "pod_basis.npz", Ur=Uf[:, :R_MAX], S=S, x_mean=x_mean, A_all=A_all,
-         n_tr=N_TR, n_val=N_VAL, Ng=Ng, lat=lat, lon=lon)
+# ---- plot 3: first 6 spatial modes (u-part), single column ----
+fig, axs = plt.subplots(3, 2, figsize=(W1, 4.6), sharex=True, sharey=True)
+for i, ax in enumerate(axs.flat):
+    f = U[:Ng, i].reshape(Nphi, Nlam); a = np.abs(f).max()
+    im = ax.imshow(f, origin=org, extent=ext, cmap="RdBu_r", vmin=-a, vmax=a, aspect="auto")
+    ax.set_title(f"Mode {i+1} ({S[i]**2/np.sum(S**2):.1%})", fontsize=7); ax.grid(False)
+for ax in axs[-1]: ax.set_xlabel("Lon [°E]")
+for ax in axs[:, 0]: ax.set_ylabel("Lat [°N]")
+fig.colorbar(im, ax=axs, shrink=0.8, label="$u$-component (normalised)")
+save(fig, OUT, "pod_modes")
 
-summary = [f"r for {int(p*100)}% energy: {r}" for p, r in r_cand.items()]
-summary += ["", "   r | val eps_u eps_v | test eps_u eps_v"]
-for r in r_cand.values():
-    i = np.where(r_list == r)[0][0]
-    summary.append(f"{r:4d} | {err['val'][i,0]:.4f} {err['val'][i,1]:.4f} | "
-                   f"{err['test'][i,0]:.4f} {err['test'][i,1]:.4f}")
-(OUT / "summary.txt").write_text("\n".join(summary)); print("\n".join(summary))
+# ---- plot 4: temporal coefficients of the test year, single column ----
+A = U[:, :4].T @ (Xte - xbar)
+fig, ax = plt.subplots(figsize=(W1, 2.2))
+for i in range(4): ax.plot(A[i], label=f"$a_{i+1}$", lw=0.6)
+ax.set(xlabel="Test snapshot (hourly)", ylabel="Coefficient"); ax.legend(ncol=2, fontsize=6)
+save(fig, OUT, "pod_coeffs_test")
 
-fig, ax = plt.subplots(1, 2, figsize=(W2, 2.4))
-ax[0].semilogy(np.arange(1, len(S) + 1), S, color=C["black"], marker=".", ms=2, lw=0.6)
-ax[0].set(xlabel="Mode index $i$", ylabel=r"Singular value $\sigma_i$")
-ax[1].plot(np.arange(1, len(S) + 1), energy, color=C["blue"])
-for p, r in r_cand.items():
-    ax[1].axhline(p, c="gray", ls="--", lw=0.6)
-    ax[1].axvline(r, c=C["orange"], ls=":", lw=0.8)
-    ax[1].text(r + 4, p - 0.07, f"$r={r}$", color=C["orange"], fontsize=7)
-ax[1].set(xlabel="Number of modes $r$", ylabel="Cumulative energy $E(r)$", xlim=(0, 300))
-for a, s in zip(ax, "ab"):
-    a.text(0.03, 0.92, f"({s})", transform=a.transAxes, fontsize=8, fontweight="bold")
-save(fig, OUT, "spectrum")
+# ---- video: r chosen from 90/95/99% energy; top = speed, bottom = |error| ----
+P = [0.90, 0.95, 0.99]
+R = [int(np.searchsorted(E, p)) + 1 for p in P]
+print("r for 90/95/99% energy:", R)
+frames = range(0, min(240, Xte.shape[1]), 2)
+spd = lambda x: np.hypot(x[:Ng], x[Ng:]).reshape(Nphi, Nlam)
+recon = {r: xbar + U[:, :r] @ (U[:, :r].T @ (Xte - xbar)) for r in R}
+sp_all = np.hypot(Xte[:Ng], Xte[Ng:])
+vmin, vmax = np.percentile(sp_all, [5, 95])     
+emax = np.percentile(np.abs(np.hypot(recon[R[0]][:Ng], recon[R[0]][Ng:])
+                            - np.hypot(Xte[:Ng], Xte[Ng:])), 99.5)
 
-lon2d, lat2d = np.meshgrid(lon, lat)
-fig, axs = plt.subplots(2, 4, figsize=(W2, 3.3), sharex=True, sharey=True)
-for k in range(4):
-    for row, (sl, lbl) in enumerate(((slice(0, Ng), "u"), (slice(Ng, None), "v"))):
-        m = Uf[sl, k].reshape(nlat, nlon); v = np.abs(m).max()
-        im = axs[row, k].pcolormesh(lon2d, lat2d, m, cmap="RdBu_r", vmin=-v, vmax=v,
-                                    shading="auto", rasterized=True)
-        axs[row, k].grid(False)
-        axs[row, k].text(0.04, 0.90, f"${lbl}$, mode {k+1} ({100*S[k]**2/np.sum(S**2):.1f}%)",
-                         transform=axs[row, k].transAxes, fontsize=6,
-                         bbox=dict(fc="white", ec="none", alpha=0.75, pad=1))
-        fig.colorbar(im, ax=axs[row, k], fraction=0.046, pad=0.02).ax.tick_params(labelsize=6)
-for a in axs[1]: a.set_xlabel("Longitude (°E)")
-for a in axs[:, 0]: a.set_ylabel("Latitude (°N)")
-save(fig, OUT, "modes")
+fig, axs = plt.subplots(2, 4, figsize=(9, 4.2), sharex=True, sharey=True)
+kw = dict(origin=org, extent=ext, aspect="auto")
+top = [axs[0, 0].imshow(spd(Xte[:, 0]), vmin=0, vmax=vmax, cmap="viridis", **kw)]
+axs[0, 0].set_title("ERA5 (original)")
+axs[1, 0].imshow(spd(xbar[:, 0]), vmin=0, vmax=vmax, cmap="viridis", **kw)
+axs[1, 0].set_title("Training mean")
+bot = []
+for j, (p, r) in enumerate(zip(P, R), start=1):
+    top.append(axs[0, j].imshow(spd(Xte[:, 0]), vmin=0, vmax=vmax, cmap="viridis", **kw))
+    axs[0, j].set_title(f"{p:.0%} energy, $r={r}$")
+    bot.append(axs[1, j].imshow(np.zeros((Nphi, Nlam)), vmin=0, vmax=emax, cmap="magma", **kw))
+    axs[1, j].set_title(f"Error, $r={r}$")
+for ax in axs.flat: ax.grid(False)
+for ax in axs[1]: ax.set_xlabel("Lon [°E]")
+for ax in axs[:, 0]: ax.set_ylabel("Lat [°N]")
+fig.colorbar(top[0], ax=axs[0], shrink=0.9, pad=0.01, label="Speed [m/s]")
+fig.colorbar(bot[0], ax=axs[1], shrink=0.9, pad=0.01, label="|Speed error| [m/s]")
+txt = fig.suptitle("", fontsize=9)
 
-fig, axs = plt.subplots(4, 1, figsize=(W1, 4.2), sharex=True)
-for k, a in enumerate(axs):
-    a.plot(A_all[k], color=C["blue"], lw=0.6); a.set_ylabel(f"$a_{k+1}$")
-    a.axvline(N_TR, c=C["orange"], ls="--", lw=0.8)
-    a.axvline(N_TR + N_VAL, c=C["green"], ls="-.", lw=0.8)
-axs[-1].set_xlabel("Time (h)")
-top = axs[0].get_ylim()[1]
-for x, t in ((N_TR / 2, "train"), (N_TR + N_VAL / 2, "val"), (N_TR + 1.5 * N_VAL, "test")):
-    axs[0].text(x, top, t, ha="center", va="bottom", fontsize=6)
-save(fig, OUT, "coeffs")
+def upd(k):
+    true = spd(Xte[:, k]); top[0].set_data(true)
+    for j, r in enumerate(R):
+        rec = spd(recon[r][:, k])
+        top[j + 1].set_data(rec); bot[j].set_data(np.abs(rec - true))
+    txt.set_text(f"Test year, hour {k}")
+    return top + bot
 
-fig, ax = plt.subplots(figsize=(W1, 2.5))
-for (k, e), ls, mk, c in zip(err.items(), ("--", "-", "-"), (None, "o", "s"),
-                             (C["black"], C["blue"], C["orange"])):
-    ax.semilogy(r_list, e.mean(1), ls=ls, marker=mk, color=c, markevery=3, label=k)
-for r in r_cand.values(): ax.axvline(r, c="gray", ls=":", lw=0.6)
-ax.set(xlabel="Number of modes $r$", ylabel=r"Mean $(\varepsilon_u+\varepsilon_v)/2$")
-ax.legend()
-save(fig, OUT, "projection_error")
+ani = FuncAnimation(fig, upd, frames=frames, blit=False)
+try: ani.save(OUT / "pod_reconstruction.mp4", writer=FFMpegWriter(fps=12, bitrate=3000))
+except Exception: ani.save(OUT / "pod_reconstruction.gif", writer=PillowWriter(fps=12))
+plt.close(fig)
+print("saved to", OUT)

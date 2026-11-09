@@ -1,5 +1,6 @@
 # Data files
-data/ 
+archives/ 
+datas/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -221,3 +222,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Large datasets and generated files
+data/*.nc
+data/*.npz
