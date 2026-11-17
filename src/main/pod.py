@@ -9,14 +9,12 @@ from style import W1, W2, C, save
 
 OUT = Path("results/pod"); OUT.mkdir(parents=True, exist_ok=True)
 
-# ---- load + split (train = 2022-25, test = 2026) ----
 d = np.load("data/snapshot_matrix.npz")
 Xtr, Xte, lat, lon = d["Xtr"].astype(np.float64), d["Xte"].astype(np.float64), d["lat"], d["lon"]
 n = Xtr.shape[0]; Ng = n // 2; Nphi, Nlam = len(lat), len(lon)
 org = "lower" if lat[0] < lat[-1] else "upper"
 ext = [lon.min(), lon.max(), lat.min(), lat.max()]
 
-# ---- POD on training data only ----
 xbar = Xtr.mean(axis=1, keepdims=True)
 U, S, _ = np.linalg.svd(Xtr - xbar, full_matrices=False)
 np.savez("data/pod.npz", U=U, S=S, xbar=xbar)
@@ -24,14 +22,12 @@ E = np.cumsum(S**2) / np.sum(S**2)
 for p in (0.90, 0.95, 0.99):
     print(f"r for {p:.0%} energy: {np.searchsorted(E, p) + 1}")
 
-# ---- reconstruction error vs r (train and test) ----
 rs = np.unique(np.r_[1:10, 10:101:5, 150, 200, 300]); rs = rs[rs <= len(S)]
 def err(X, r):
     Xc = X - xbar; Ur = U[:, :r]
     return np.mean(np.linalg.norm(Xc - Ur @ (Ur.T @ Xc), axis=0) / np.linalg.norm(X, axis=0))
 etr = [err(Xtr, r) for r in rs]; ete = [err(Xte, r) for r in rs]
 
-# ---- plot 1: singular values + residual energy (zoomed) ----
 k = np.arange(1, len(S) + 1)
 fig, ax = plt.subplots(1, 2, figsize=(W2, 2.1))
 ax[0].loglog(k, S / S[0], c=C["blue"])
@@ -46,14 +42,12 @@ for p, ls in zip((0.90, 0.95, 0.99), (":", "--", "-.")):
 ax[1].set(xlabel="$r$", ylabel="Residual energy $1-E(r)$")
 save(fig, OUT, "singular_values")
 
-# ---- plot 2: reconstruction error vs r ----
 fig, ax = plt.subplots(figsize=(W1, 2.2))
 ax.semilogy(rs, etr, "o-", c=C["blue"], label="Train (2022-25)")
 ax.semilogy(rs, ete, "s-", c=C["orange"], label="Test (2026)")
 ax.set(xlabel="$r$", ylabel="Mean relative error"); ax.legend()
 save(fig, OUT, "recon_error_vs_r")
 
-# ---- plot 3: first 6 spatial modes (u-part), single column ----
 fig, axs = plt.subplots(3, 2, figsize=(W1, 4.6), sharex=True, sharey=True)
 for i, ax in enumerate(axs.flat):
     f = U[:Ng, i].reshape(Nphi, Nlam); a = np.abs(f).max()
@@ -64,14 +58,12 @@ for ax in axs[:, 0]: ax.set_ylabel("Lat [°N]")
 fig.colorbar(im, ax=axs, shrink=0.8, label="$u$-component (normalised)")
 save(fig, OUT, "pod_modes")
 
-# ---- plot 4: temporal coefficients of the test year, single column ----
 A = U[:, :4].T @ (Xte - xbar)
 fig, ax = plt.subplots(figsize=(W1, 2.2))
 for i in range(4): ax.plot(A[i], label=f"$a_{i+1}$", lw=0.6)
 ax.set(xlabel="Test snapshot (hourly)", ylabel="Coefficient"); ax.legend(ncol=2, fontsize=6)
 save(fig, OUT, "pod_coeffs_test")
 
-# ---- video: r chosen from 90/95/99% energy; top = speed, bottom = |error| ----
 P = [0.90, 0.95, 0.99]
 R = [int(np.searchsorted(E, p)) + 1 for p in P]
 print("r for 90/95/99% energy:", R)

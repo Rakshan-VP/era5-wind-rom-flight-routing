@@ -9,12 +9,11 @@ from style import W1, W2, C, save
 
 OUT = Path("results/datarepresentation"); OUT.mkdir(parents=True, exist_ok=True)
 
-# ---- load only u, v ----
 ds = xr.open_dataset("data/jan2022_2026.nc")
 tn  = "valid_time" if "valid_time" in ds.dims else "time"
 lat = "latitude"   if "latitude"  in ds.dims else "lat"
 lon = "longitude"  if "longitude" in ds.dims else "lon"
-ds  = ds[["u", "v"]].squeeze(drop=True).sortby(tn)     # drops singleton level dim
+ds  = ds[["u", "v"]].squeeze(drop=True).sortby(tn)   
 
 t = ds[tn].values
 u = ds["u"].transpose(tn, lat, lon).values.astype(np.float32)
@@ -22,7 +21,6 @@ v = ds["v"].transpose(tn, lat, lon).values.astype(np.float32)
 m, Nphi, Nlam = u.shape
 Ng, n = Nphi * Nlam, 2 * Nphi * Nlam
 
-# ---- snapshot matrix X in R^{n x m}: [u; v] stacked, columns = time ----
 X = np.concatenate([u.reshape(m, -1), v.reshape(m, -1)], axis=1).T
 years = t.astype("datetime64[Y]").astype(int) + 1970
 train, test = years < years.max(), years == years.max()
@@ -39,7 +37,6 @@ info = (f"File          : jan2022_2026.nc\n"
         f"Lon range     : {float(ds[lon].min())}-{float(ds[lon].max())}\n")
 print(info); (OUT / "data_info.txt").write_text(info)
 
-# ---- video: 5 subplots (one per January), wind speed vs time ----
 spd = np.sqrt(u**2 + v**2)
 yrs = sorted(set(years))
 S = [spd[years == y] for y in yrs]

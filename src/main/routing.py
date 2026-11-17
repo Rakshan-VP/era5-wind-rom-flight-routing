@@ -9,7 +9,6 @@ OUT = Path("results/routing"); OUT.mkdir(parents=True, exist_ok=True)
 LBL = {"dmd": "POD-DMD", "opinf": "POD-OpInf"}
 COL = {"dmd": (C["blue"], "-"), "opinf": ("#D55E00", "--")}
 
-# ---- data + POD basis ----
 d = np.load("data/snapshot_matrix.npz"); pod = np.load("data/pod.npz")
 X, years = d["X"].astype(np.float64), d["years"]
 lat, lon = d["lat"].astype(float), d["lon"].astype(float)
@@ -23,7 +22,6 @@ R = [int(np.searchsorted(E, q)) + 1 for q in P]
 flip = lat[0] > lat[-1]; lat = np.sort(lat)
 dlat, dlon = lat[1] - lat[0], lon[1] - lon[0]
 
-# ---- settings ----
 Re = 6371e3; HW = 24
 DEP = [day * 24 + h for day in (13, 15) for h in (0, 6, 12, 18)]
 DAY_KD = {13: 0, 15: 4}
@@ -33,7 +31,6 @@ VA = 250.0
 CASES = {"A": (np.array([VA]), lambda v: np.ones_like(v), 0.0)}
 NS = 200
 
-# ---- graph on the ERA5 grid (16 neighbours), edges sorted by source node ----
 I, J = np.meshgrid(np.arange(NLA), np.arange(NLO), indexing="ij"); I, J = I.ravel(), J.ravel()
 OFF = [(1,0),(-1,0),(0,1),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1),(1,2),(1,-2),(-1,2),(-1,-2),(2,1),(2,-1),(-2,1),(-2,-1)]
 ea, eb = [], []
@@ -71,7 +68,6 @@ def mid(Xc):
                        + fy * (1 - fx) * f[:, i0 + 1, j0] + fy * fx * f[:, i0 + 1, j0 + 1])
     return out
 
-# ---- wind sources: ERA5 truth, POD-DMD, POD-OpInf (restart from ERA5 at departure) ----
 def feats(Z, quad):
     F = [np.ones((1, Z.shape[1])), Z]
     if quad: i, j = np.triu_indices(Z.shape[0]); F.append(Z[i] * Z[j])
@@ -97,7 +93,6 @@ def rel(Xh, Xt):
     return np.stack([np.linalg.norm(Xh[:Ng] - Xt[:Ng], axis=0) / np.linalg.norm(Xt[:Ng], axis=0),
                      np.linalg.norm(Xh[Ng:] - Xt[Ng:], axis=0) / np.linalg.norm(Xt[Ng:], axis=0)])
 
-# ---- edge cost, time-dependent Dijkstra, evaluation ----
 def edge(w, e, nn, dd, case):
     VAS, md, ct = CASES[case]
     wl, wn = (w * e).sum(1)[:, None], (w * nn).sum(1)[:, None]; ro = VAS[None]**2 - wn**2
@@ -146,7 +141,6 @@ def xte(Pq, Qref):
     side = np.sign(np.einsum("ij,ij->i", np.cross(ab[j], p - c[ar, j]), a[j]))
     return side * dd[ar, j] / 1e3
 
-# ---- main loop: same solver / departures / parameters on all wind sources (Case A) ----
 rows, routes = [], {}
 for case in CASES:
     for kd, dep in enumerate(DEP):
@@ -170,7 +164,6 @@ for case in CASES:
                 routes[(case, kd, nm, r)] = dict(P=rt["P"], km=kmr, xte=xt, T=T / 3600)
         print(f"case {case}, dep {dep}h done  (ERA5 T = {Tref / 3600:.3f} h, no-wind route T = {Tnw / 3600:.3f} h)")
 
-# ---- individual txt per method/r + aggregated summary ----
 KEYS = ["Tref", "T", "T_own", "eps_T", "eps_F", "delta", "xte_mean", "xte_max", "eps_win", "t_wind", "t_route"]
 AG = {}
 for case in CASES:
@@ -207,7 +200,6 @@ for (case, nm, r), a in AG.items():
     tx.append(f"{case} & {LBL[nm]} & {r} & {a['eps_win']:.3f} & {a['eps_T']:.3f} & {a['eps_F']:.3f} & {a['delta']:.1f} & {a['xte_max']:.1f} \\\\")
 (OUT / "routing_table.tex").write_text("\n".join(tx + ["\\bottomrule", "\\end{tabular}", "\\end{table}"]))
 
-# ---- Fig 1: cross-track error, three ranks for each date (six plots total) ----
 for day, kd in DAY_KD.items():
     fig, ax = plt.subplots(1, 3, figsize=(W2, 2.2), sharey=True, constrained_layout=True)
     print(f"Case A, {day} Jan 2026, departure +{DEP[kd]} h (times on TRUE ERA5 winds)")
@@ -222,7 +214,6 @@ for day, kd in DAY_KD.items():
     ax[0].set_ylabel("Cross-track error vs ERA5 [km]"); ax[0].legend(fontsize=5.5, loc="best")
     save(fig, OUT, f"route_xte_{day}Jan")
 
-# ---- Fig 2: eps_T, eps_F, delta_route vs r (case A, mean over both dates) ----
 fig, ax = plt.subplots(3, 1, figsize=(W2, 5.0), sharex=True, constrained_layout=True)
 for a, (k, yl) in zip(ax, [("eps_T", "$\\varepsilon_T$ [%]"), ("eps_F", "$\\varepsilon_F$ [%]"), ("delta", "$\\delta_{route}$ [km]")]):
     for nm in LBL:
@@ -231,7 +222,6 @@ for a, (k, yl) in zip(ax, [("eps_T", "$\\varepsilon_T$ [%]"), ("eps_F", "$\\vare
 ax[0].legend(fontsize=5.5); ax[-1].set(xlabel="Reduced dimension $r$", xticks=R)
 save(fig, OUT, "route_metrics_vs_r")
 
-# ---- Video: time-synchronised aircraft positions + closeup of deviation ----
 from matplotlib.animation import FuncAnimation, FFMpegWriter, PillowWriter
 from matplotlib.patches import Rectangle
 
@@ -240,16 +230,13 @@ SRCS = [("era5", "ERA5", "k"), ("dmd", "POD-DMD", COL["dmd"][0]), ("opinf", "POD
 full = {k: routes[("A", kd, k, 0 if k == "era5" else rm)]["P"] for k, _, _ in SRCS}
 nwP = routes[("A", kd, "nowind", 0)]["P"]
 
-# Restore the correct departure's TRUE ERA5 winds (Wt was overwritten by the main loop)
 g = tst[DEP[kd]]
 truth = X[:, g:g + HW + 1]
 Wt = mid(truth)
 
-# Directed edge lookup: reconstruct route edges from their grid-node coordinates
 edge_lookup = {(int(a), int(b)): i for i, (a, b) in enumerate(zip(ea, eb))}
 
 def timed_profile(Pl):
-    """Cumulative flight time and distance along a route, flown in true ERA5 winds."""
     nodes = [snap(p) for p in Pl]
     eids = [edge_lookup[(nodes[j], nodes[j + 1])] for j in range(len(nodes) - 1)]
     times, distances = [0.0], [0.0]
@@ -265,28 +252,22 @@ def timed_profile(Pl):
     return np.asarray(times), np.asarray(distances)
 
 def position_at(Pl, times, t):
-    """Interpolate aircraft position at elapsed flight time t."""
     if t >= times[-1]: return Pl[-1].copy()
     j = max(0, np.searchsorted(times, t, side="right") - 1)
     f = (t - times[j]) / (times[j + 1] - times[j])
     return Pl[j] + f * (Pl[j + 1] - Pl[j])
 
-# Calculate each route's actual flight-time profile using the same true winds
 profiles = {k: timed_profile(full[k]) for k, _, _ in SRCS}
 TMAX = max(profiles[k][0][-1] for k, _, _ in SRCS)
 t_anim = np.linspace(0.0, TMAX, NV)
 
-# All aircraft are evaluated at the SAME elapsed flight time
 trk = {k: np.array([position_at(full[k], profiles[k][0], t) for t in t_anim]) for k, _, _ in SRCS}
 
-# ERA5 distance travelled at each common elapsed time
 km = np.interp(t_anim, profiles["era5"][0], profiles["era5"][1])
 
-# Cross-track error at matching elapsed times
 xv = {k: xte(trk[k], full["era5"]) for k in ("dmd", "opinf")}
 ylm = max(1.15 * max(np.abs(v).max() for v in xv.values()), 1.0)
 
-# Wind magnitude background at departure
 f0 = truth[:, 0]
 u0, v0 = f0[:Ng].reshape(NLA, NLO), f0[Ng:].reshape(NLA, NLO)
 if flip: u0, v0 = u0[::-1], v0[::-1]

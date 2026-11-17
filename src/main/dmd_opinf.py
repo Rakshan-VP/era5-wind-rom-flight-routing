@@ -10,13 +10,12 @@ OUT = {k: Path(f"results/{k}") for k in ("dmd", "opinf", "comparison")}
 for p in OUT.values(): p.mkdir(parents=True, exist_ok=True)
 LBL = {"dmd": "POD-DMD", "opinf": "POD-OpInf"}
 
-# ---- load data + POD basis (train = 2022-25, test = 2026) ----
 d = np.load("data/snapshot_matrix.npz"); pod = np.load("data/pod.npz")
 X, years = d["X"].astype(np.float64), d["years"]
 U, S, xbar = pod["U"], pod["S"], pod["xbar"]
 n = U.shape[0]; Ng = n // 2
 tr = years < years.max(); Xte = X[:, ~tr]; mte = Xte.shape[1]
-ty = np.unique(years[tr]); yv = ty[-1]                       # OpInf validation year = 2025
+ty = np.unique(years[tr]); yv = ty[-1]                       
 E = np.cumsum(S**2) / np.sum(S**2)
 P = [0.90, 0.95, 0.99]
 R = [int(np.searchsorted(E, q)) + 1 for q in P]
@@ -28,20 +27,19 @@ lab = {r: f"{q:.0%} ($r$={r})" for q, r in zip(P, R)}
 day = np.arange(mte) / 24
 smooth = lambda e: np.convolve(e, np.ones(24) / 24, mode="same")
 
-def rel(Xh, Xt):                                             # rows: [eps_u, eps_v] per snapshot
+def rel(Xh, Xt):                                             
     return np.stack([np.linalg.norm(Xh[:Ng] - Xt[:Ng], axis=0) / np.linalg.norm(Xt[:Ng], axis=0),
                      np.linalg.norm(Xh[Ng:] - Xt[Ng:], axis=0) / np.linalg.norm(Xt[Ng:], axis=0)])
 
-# ---- shared helpers (both models work on std-scaled coefficients z) ----
-def guard(Zn):                                               # blow-up -> NaN
+def guard(Zn):                                              
     Zn[:, ~np.isfinite(Zn).all(0) | (np.abs(Zn).max(0) > 1e3)] = np.nan
     return Zn
 
-def pairs(Z, yrs):                                           # pairs inside each January only
+def pairs(Z, yrs):                                         
     idx = [np.where(years == y)[0] for y in yrs]
     return np.hstack([Z[:, i[:-1]] for i in idx]), np.hstack([Z[:, i[1:]] for i in idx])
 
-def lead(f, Z, s, Ur, idx):                                  # restart from ERA5, run H h
+def lead(f, Z, s, Ur, idx):                                 
     e = np.full((2, H + 1), np.nan); Zc = Z[:, idx].copy()
     for h in range(H + 1):
         if h: Zc = f(Zc)
@@ -50,12 +48,12 @@ def lead(f, Z, s, Ur, idx):                                  # restart from ERA5
     return e
 
 # ---- OpInf helpers ----
-def feats(Z, quad):                                          # [1; z; q(z)]
+def feats(Z, quad):                                          
     F = [np.ones((1, Z.shape[1])), Z]
     if quad: i, j = np.triu_indices(Z.shape[0]); F.append(Z[i] * Z[j])
     return np.vstack(F)
 
-def ridge(D, Y, gams):                                       # D (N,d), Y (N,r) -> list of W (d,r)
+def ridge(D, Y, gams):                                       
     N, dd = D.shape
     if dd <= N:
         w, V = np.linalg.eigh(D.T @ D); B = V.T @ (D.T @ Y)
@@ -66,7 +64,6 @@ def ridge(D, Y, gams):                                       # D (N,d), Y (N,r) 
 mk = lambda W, quad: (lambda Zc: guard(W.T @ feats(Zc, quad)))
 score = lambda e: np.nanmean(e) if np.isfinite(e).all() else np.inf
 
-# ---- evaluate one fitted model (identical metrics for DMD and OpInf) ----
 def run(f, r, q, Z, s, Ur, e_proj, **kw):
     zte = Z[:, ~tr]
     t0 = time.perf_counter()
@@ -85,7 +82,7 @@ def run(f, r, q, Z, s, Ur, e_proj, **kw):
              proj_u=e_proj[0], proj_v=e_proj[1], t_pred=t_pred, blow=blow, **kw)
     m["eps_free"] = (m["eps_u"] + m["eps_v"]) / 2; m["proj"] = e_proj.mean()
     m["eps_24"] = (m["eps_u_24"] + m["eps_v_24"]) / 2; m["eps_72"] = (m["eps_u_72"] + m["eps_v_72"]) / 2
-    m["ex_24"] = 100 * (m["eps_24"] - m["proj"]) / m["proj"]      # excess over projection floor [%]
+    m["ex_24"] = 100 * (m["eps_24"] - m["proj"]) / m["proj"]     
     m["ex_72"] = 100 * (m["eps_72"] - m["proj"]) / m["proj"]
     m["storage"] = (n * r + m["params"] + n) * 8 / 2**20
     return dict(m=m, e_free=e_free, e_lead=e_lead, a=a)
@@ -96,7 +93,7 @@ for q, r in zip(P, R):
     s = Ac[:, tr].std(axis=1); Z = Ac / s[:, None]
     e_proj = rel(xbar + Ur @ Ac[:, ~tr], Xte).mean(axis=1)
 
-    # ================= POD-DMD =================
+    # POD-DMD 
     t0 = time.perf_counter()
     Z1, Z2 = pairs(Z, ty); Az = Z2 @ np.linalg.pinv(Z1)
     t_fit = time.perf_counter() - t0
@@ -106,11 +103,11 @@ for q, r in zip(P, R):
     v["lam"] = lam; res["dmd"][r] = v
     np.savez(f"data/dmd_r{r}.npz", A=Az * s[:, None] / s[None, :], s=s, a_free=v["a"], lam=lam)
 
-    # ================= POD-OpInf =================
+    # POD-OpInf 
     ivs = np.where(years == yv)[0]; vst = ivs[np.arange(0, len(ivs) - H, STRIDE)]
     Z1, Z2 = pairs(Z, ty[:-1]); val = {}
     for quad in (False, True):
-        if quad and (r * (r + 1) // 2 + r + 1) * Z1.shape[1] * 8 > 3e9: continue   # memory guard
+        if quad and (r * (r + 1) // 2 + r + 1) * Z1.shape[1] * 8 > 3e9: continue  
         Ws = ridge(feats(Z1, quad).T, Z2.T, GAM)
         val[quad] = np.array([score(lead(mk(W, quad), Z, s, Ur, vst)) for W in Ws])
     quad = True in val and val[True].min() < val[False].min()
@@ -125,7 +122,6 @@ for q, r in zip(P, R):
     v["val"] = val; res["opinf"][r] = v
     np.savez(f"data/opinf_r{r}.npz", W=W, s=s, quad=quad, a_free=v["a"])
 
-    # ---- individual txt per method ----
     for name in res:
         m = res[name][r]["m"]
         (OUT[name] / f"metrics_{name}_r{r}.txt").write_text(
@@ -140,7 +136,6 @@ for q, r in zip(P, R):
               "storage [MiB]         : {storage:.2f}\n".format(**m)
             + (f"blow-up hour (-1=none): {m['blow']}\n" if name == "opinf" else ""))
 
-# ---- summary table per method ----
 for name in res:
     hdr = f"{'r':>5}{'E':>6}{'eps_u':>8}{'eps_v':>8}{'u24h':>8}{'v24h':>8}{'u72h':>8}{'v72h':>8}{'projU':>8}{'projV':>8}{'rho':>8}{'fit[s]':>8}{'pred[s]':>9}{'MiB':>8}"
     if name == "opinf": hdr += f"{'model':>11}{'gamma':>8}{'blow':>6}"
@@ -154,8 +149,6 @@ for name in res:
     tab = f"{LBL[name]} summary (test year 2026)\n" + hdr + "\n" + "\n".join(rows) + "\n"
     print(tab); (OUT[name] / f"summary_{name}.txt").write_text(tab)
 
-# ================= comparison tables (txt + LaTeX) =================
-# (key, txt label, latex label, format)
 ACC = [("eps_u", "free-run eps_u", "$\\varepsilon_u$ free-run", ".4f"),
        ("eps_v", "free-run eps_v", "$\\varepsilon_v$ free-run", ".4f"),
        ("eps_u_24", "24 h eps_u", "$\\varepsilon_u$ 24 h", ".4f"),
@@ -172,7 +165,7 @@ COST = [("rho", "spectral radius", "$\\rho(A)$", ".4f"),
         ("t_pred", "predict time [s]", "Predict time [s]", ".4f"),
         ("params", "parameters", "Parameters", "d"),
         ("storage", "storage [MiB]", "Storage [MiB]", ".2f")]
-pct = lambda a, b: 100 * (b - a) / a if a else np.nan          # change of OpInf w.r.t. DMD; <0 = OpInf lower
+pct = lambda a, b: 100 * (b - a) / a if a else np.nan          
 
 blocks = ["POD-DMD vs POD-OpInf, test year 2026\n"
           "change [%] = 100*(OpInf - DMD)/DMD ; negative = OpInf lower (for errors: OpInf better)\n"]
@@ -204,7 +197,6 @@ nf = {r: (res["opinf"][r]["m"]["model"], res["opinf"][r]["m"]["gamma"]) for r in
     + tex(ACC, "Forecast accuracy of POD-DMD and POD-OpInf on the 2026 test month (same $r$, same basis).", "tab:rom_acc")
     + "\n\n" + tex(COST, "Cost and stability of POD-DMD and POD-OpInf.", "tab:rom_cost"))
 
-# ================= plots (single column) =================
 def err_fig(name):
     fig, ax = plt.subplots(2, 1, figsize=(W1, 4.2))
     for (r, v), c in zip(res[name].items(), cols):
@@ -224,7 +216,6 @@ def err_fig(name):
     save(fig, OUT[name], f"{name}_error")
 for name in res: err_fig(name)
 
-# ---- DMD eigenvalues ----
 th = np.linspace(0, 2 * np.pi, 400); ph = 2 * np.pi / 24
 fig, ax = plt.subplots(figsize=(W1, 3.3))
 ax.plot(np.cos(th), np.sin(th), "k", lw=0.6, label="Unit circle")
@@ -239,7 +230,6 @@ ax.set(xlabel="Re($\\lambda$)", ylabel="Im($\\lambda$)", aspect="equal", xlim=(-
 ax.legend(loc="lower left", fontsize=6, borderaxespad=0.3)
 save(fig, OUT["dmd"], "dmd_eigs")
 
-# ---- OpInf validation (model selection) ----
 fig, ax = plt.subplots(figsize=(W1, 2.6))
 for (r, v), c in zip(res["opinf"].items(), cols):
     ax.loglog(GAM, v["val"][False], "--", c=c, label=f"{lab[r]} linear")
@@ -248,7 +238,6 @@ ax.set(xlabel="Ridge $\\gamma$", ylabel=f"Validation error ({yv}, mean over 72 h
 ax.legend(fontsize=5.5)
 save(fig, OUT["opinf"], "opinf_validation")
 
-# ---- comparison: DMD (solid) vs OpInf (dashed) on the same axes ----
 ls = {"dmd": "-", "opinf": "--"}
 fig, ax = plt.subplots(2, 1, figsize=(W1, 4.4))
 for name in res:
@@ -265,7 +254,6 @@ ax[0].legend(fontsize=5.5, ncol=2)
 for a in ax: a.title.set_fontsize(8)
 save(fig, OUT["comparison"], "comparison_error")
 
-# ---- comparison: % change of OpInf w.r.t. DMD ----
 fig, ax = plt.subplots(figsize=(W1, 2.6)); w = 0.26
 for i, (k, t, c) in enumerate([("eps_free", "free-run", cols[0]), ("eps_24", "24 h", cols[1]), ("eps_72", "72 h", cols[2])]):
     ch = [pct(res["dmd"][r]["m"][k], res["opinf"][r]["m"][k]) for r in R]
